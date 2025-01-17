@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using KlassaktAngularApi.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -12,7 +13,7 @@ namespace KlassaktAngularApi.Controllers
 
         public UsersController(IConfiguration configuration)
         {
-            _configuration = configuration;
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
         [HttpGet("GetUsers")]
@@ -64,6 +65,67 @@ namespace KlassaktAngularApi.Controllers
 
             // Return the result as JSON
             return Ok(result);
+        }
+        [HttpPost("CreateUser")]
+        public IActionResult CreateUser([FromBody] UserModel usermodel)
+        {
+            if (usermodel == null)
+            {
+                return BadRequest("User data is null.");
+            }
+
+            string connectionString = _configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                return StatusCode(500, "Database connection string is not configured.");
+            }
+
+            // SQL query to insert user data
+            string query = "INSERT INTO Users (Name, Gender,Address,Course,is_active,Role,Email,LoginName) VALUES (@Name, @Gender,@Address,@Course,@is_active,@Role,@Email,@LoginName)";
+
+            // Using SqlConnection and SqlCommand to insert data
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        // Add parameters to prevent SQL injection
+                        command.Parameters.AddWithValue("@Name", usermodel.Name);
+                        command.Parameters.AddWithValue("@Email", usermodel.Email);
+                        command.Parameters.AddWithValue("@Gender", usermodel.Gender);
+                        command.Parameters.AddWithValue("@Course", usermodel.Course);
+                        command.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
+                        command.Parameters.AddWithValue("@Address", usermodel.Address);
+                        command.Parameters.AddWithValue("@Role", usermodel.Role);
+                        command.Parameters.AddWithValue("@is_active", usermodel.IsActive);
+
+                        int result = command.ExecuteNonQuery(); // Executes the insert query
+
+                        if (result > 0)
+                        {
+                            // Return success response
+                            return Ok("User created successfully.");
+                        }
+                        else
+                        {
+                            return StatusCode(500, "Internal server error.");
+                        }
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    // Log exception and return an error response
+                    return StatusCode(500, $"Database error: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    // Return a general error message
+                    return StatusCode(500, $"General error: {ex.Message}");
+                }
+            }
         }
     }
 }
