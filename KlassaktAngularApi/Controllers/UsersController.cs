@@ -67,7 +67,7 @@ namespace KlassaktAngularApi.Controllers
             return Ok(result);
         }
         [HttpPost("CreateUser")]
-        public IActionResult CreateUser([FromBody] UserModel usermodel)
+        public IActionResult CreateUser([FromBody] UserModel usermodel )
         {
             if (usermodel == null)
             {
@@ -80,52 +80,77 @@ namespace KlassaktAngularApi.Controllers
                 return StatusCode(500, "Database connection string is not configured.");
             }
 
-            // SQL query to insert user data
-            string query = "INSERT INTO Users (Name, Gender,Address,Course,is_active,Role,Email,LoginName) VALUES (@Name, @Gender,@Address,@Course,@is_active,@Role,@Email,@LoginName)";
+            string query1 = "INSERT INTO Users (Name, Gender, Address, PhoneNumber, is_active, Role, Email, LoginName) " +
+                            "VALUES (@Name, @Gender, @Address, @PhoneNumber, @is_active, @Role, @Email, @LoginName);";
+            string query2 = "INSERT INTO Credentials (LoginName, password) VALUES (@LoginName, @Password);";
 
-            // Using SqlConnection and SqlCommand to insert data
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
+                SqlTransaction transaction = null;
                 try
                 {
                     connection.Open();
+                    transaction = connection.BeginTransaction(); // Start the transaction
 
-                    using (SqlCommand command = new SqlCommand(query, connection))
+                    // Begin using SqlCommand objects for both queries inside the same `using` block
+                    using (SqlCommand command1 = new SqlCommand(query1, connection, transaction),
+                           command2 = new SqlCommand(query2, connection, transaction))
                     {
-                        // Add parameters to prevent SQL injection
-                        command.Parameters.AddWithValue("@Name", usermodel.Name);
-                        command.Parameters.AddWithValue("@Email", usermodel.Email);
-                        command.Parameters.AddWithValue("@Gender", usermodel.Gender);
-                        command.Parameters.AddWithValue("@Course", usermodel.Course);
-                        command.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
-                        command.Parameters.AddWithValue("@Address", usermodel.Address);
-                        command.Parameters.AddWithValue("@Role", usermodel.Role);
-                        command.Parameters.AddWithValue("@is_active", usermodel.IsActive);
+                        // Add parameters for the first query (Users table)
+                        command1.Parameters.AddWithValue("@Name", usermodel.Name);
+                        command1.Parameters.AddWithValue("@Gender", usermodel.Gender);
+                        command1.Parameters.AddWithValue("@Address", usermodel.Address);
+                        command1.Parameters.AddWithValue("@PhoneNumber", usermodel.phonenumber);
+                        command1.Parameters.AddWithValue("@is_active", usermodel.IsActive);
+                        command1.Parameters.AddWithValue("@Role", usermodel.Role);
+                        command1.Parameters.AddWithValue("@Email", usermodel.Email);
+                        command1.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
 
-                        int result = command.ExecuteNonQuery(); // Executes the insert query
+                        // Add parameters for the second query (Credentials table)
+                        command2.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
+                        command2.Parameters.AddWithValue("@Password", usermodel.Password);  // Ensure Password is provided
 
-                        if (result > 0)
+                        int result1 = command1.ExecuteNonQuery(); // Execute the first insert query
+
+                        if (result1 <= 0)
                         {
-                            // Return success response
-                            return Ok("User created successfully.");
+                            transaction.Rollback(); // If the first query fails, rollback the transaction
+                            return StatusCode(500, "Failed to insert user into Users table.");
                         }
-                        else
+
+                        int result2 = command2.ExecuteNonQuery(); // Execute the second insert query
+
+                        if (result2 <= 0)
                         {
-                            return StatusCode(500, "Internal server error.");
+                            transaction.Rollback(); // If the second query fails, rollback the transaction
+                            return StatusCode(500, "Failed to insert data into Credentials table.");
                         }
+
+                        // If both queries succeed, commit the transaction
+                        transaction.Commit();
                     }
+                    return Ok("User created successfully.");
                 }
                 catch (SqlException ex)
                 {
-                    // Log exception and return an error response
+                    // Log exception and rollback the transaction if it failed
+                    if (transaction != null)
+                    {
+                        transaction.Rollback(); // Rollback on error
+                    }
                     return StatusCode(500, $"Database error: {ex.Message}");
                 }
                 catch (Exception ex)
                 {
-                    // Return a general error message
+                    // Rollback the transaction and return a general error message
+                    if (transaction != null)
+                    {
+                        transaction.Rollback(); // Rollback on error
+                    }
                     return StatusCode(500, $"General error: {ex.Message}");
                 }
             }
         }
+
     }
 }

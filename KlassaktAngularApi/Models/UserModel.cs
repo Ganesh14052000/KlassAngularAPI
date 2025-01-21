@@ -1,4 +1,6 @@
-﻿namespace KlassaktAngularApi.Models
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace KlassaktAngularApi.Models
 {
     public class UserModel
     {
@@ -11,10 +13,10 @@
         // Corresponds to the 'Address' column in the database
         public string Address { get; set; }
 
-        // Corresponds to the 'Course' column in the database
-        public string Course { get; set; }
 
+        public string phonenumber { get; set; }
         // Corresponds to the 'is_active' column in the database (bit type)
+        
         public bool IsActive { get; set; }
 
         // Corresponds to the 'Role' column in the database
@@ -24,6 +26,8 @@
         public string Email { get; set; }
 
         // Corresponds to the 'LoginName' column in the database
+        [Required]
         public string LoginName { get; set; }
+        public string Password { get; set; }
     }
 }
