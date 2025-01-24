@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Transactions;
 
 namespace KlassaktAngularApi.Controllers
 {
@@ -151,6 +152,124 @@ namespace KlassaktAngularApi.Controllers
                 }
             }
         }
+        [HttpPut("UpdateUser")]
+        public IActionResult UpdateUser([FromBody] UserModel usermodel)
+        {
+            if (usermodel == null)
+            {
+                return BadRequest("User data is null.");
+            }
 
+            string connectionString = _configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                return StatusCode(500, "Database connection string is not configured.");
+            }
+
+            string query1 = "Update Users SET Name=@Name,Gender=@Gender,Address=@Address,is_active=@is_active,Role=@Role,Email=@Email,PhoneNumber=@PhoneNumber WHERE LoginName=@LoginName";
+            string query2 = "Update Credentials SET LoginName=@LoginName, password=@password WHERE LoginName=@LoginName ";
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                SqlTransaction transaction = null;
+                try
+                {
+                    connection.Open();
+                    transaction = connection.BeginTransaction(); // Start the transaction
+
+                    // Begin using SqlCommand objects for both queries inside the same `using` block
+                    using (SqlCommand command1 = new SqlCommand(query1, connection, transaction),
+                           command2 = new SqlCommand(query2, connection, transaction))
+                    {
+                        // Add parameters for the first query (Users table)
+                        command1.Parameters.AddWithValue("@Name", usermodel.Name);
+                        command1.Parameters.AddWithValue("@Gender", usermodel.Gender);
+                        command1.Parameters.AddWithValue("@Address", usermodel.Address);
+                        command1.Parameters.AddWithValue("@PhoneNumber", usermodel.phonenumber);
+                        command1.Parameters.AddWithValue("@is_active", usermodel.IsActive);
+                        command1.Parameters.AddWithValue("@Role", usermodel.Role);
+                        command1.Parameters.AddWithValue("@Email", usermodel.Email);
+                        command1.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
+
+                        // Add parameters for the second query (Credentials table)
+                        command2.Parameters.AddWithValue("@LoginName", usermodel.LoginName);
+                        command2.Parameters.AddWithValue("@Password", usermodel.Password);  // Ensure Password is provided
+
+                        int result1 = command1.ExecuteNonQuery(); // Execute the first insert query
+
+                        if (result1 <= 0)
+                        {
+                            transaction.Rollback(); // If the first query fails, rollback the transaction
+                            return StatusCode(500, "Failed to insert user into Users table.");
+                        }
+
+                        int result2 = command2.ExecuteNonQuery(); // Execute the second insert query
+
+                        if (result2 <= 0)
+                        {
+                            transaction.Rollback(); // If the second query fails, rollback the transaction
+                            return StatusCode(500, "Failed to insert data into Credentials table.");
+                        }
+
+                        // If both queries succeed, commit the transaction
+                        transaction.Commit();
+                    }
+                    return Ok("User Update successfully.");
+                }
+                catch (SqlException ex)
+                {
+                    // Log exception and rollback the transaction if it failed
+                    if (transaction != null)
+                    {
+                        transaction.Rollback(); // Rollback on error
+                    }
+                    return StatusCode(500, $"Database error: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    // Rollback the transaction and return a general error message
+                    if (transaction != null)
+                    {
+                        transaction.Rollback(); // Rollback on error
+                    }
+                    return StatusCode(500, $"General error: {ex.Message}");
+                }
+            }
+        }
+        [HttpDelete("DeleteUser")]
+        public IActionResult DeleteUser(string LoginName)
+        {
+            string query1 = "DELETE FROM USERS WHERE LoginName=@LoginName";
+            string query2 = "DELETE FROM Credentials WHERE LoginName=@LoginName";
+            string connectionString = _configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                SqlTransaction transaction = null;
+                connection.Open();
+                
+                try
+                {
+                    transaction = connection.BeginTransaction();
+                    using (SqlCommand query1cmd = new SqlCommand(query1, connection, transaction), query2cmd = new SqlCommand(query2,connection,transaction))
+                    {
+                        query1cmd.Parameters.AddWithValue("@LoginName", LoginName);
+                        query2cmd.Parameters.AddWithValue("@LoginName", LoginName);
+                        query1cmd.ExecuteNonQuery();
+                        query2cmd.ExecuteNonQuery();
+                        transaction.Commit();
+                    }
+                    return Ok("UserDeletedSuccessfully");
+                    
+                }
+
+                catch(Exception ex) {
+                    transaction?.Rollback();
+                    return StatusCode(500, $"General error: {ex.Message}");
+                };
+
+             }
+
+
+        }
     }
 }
